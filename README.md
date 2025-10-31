@@ -1,4 +1,4 @@
-# Sem_7_assignments
+# ML Eco. Assignment 3
 
 This repository contains implementations of causal inference methods:
 1. **Difference-in-Difference (DiD) Analysis** - Estimating the causal impact of government subsidies on average wages
