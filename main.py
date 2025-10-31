@@ -6,7 +6,7 @@ Usage: python main.py [--did] [--rdd]
 """
 
 import sys
-import os
+import subprocess
 
 def run_did_analysis():
     """Run Difference-in-Difference analysis"""
@@ -14,8 +14,8 @@ def run_did_analysis():
     print("# RUNNING DIFFERENCE-IN-DIFFERENCE (DiD) ANALYSIS")
     print("#"*80 + "\n")
     
-    # Import and run the DiD analysis
-    exec(open('did_analysis.py').read())
+    # Run the DiD analysis script
+    subprocess.run([sys.executable, 'did_analysis.py'])
     
 def run_rdd_analysis():
     """Run Regression Discontinuity Design analysis"""
@@ -23,8 +23,8 @@ def run_rdd_analysis():
     print("# RUNNING REGRESSION DISCONTINUITY DESIGN (RDD) ANALYSIS")
     print("#"*80 + "\n")
     
-    # Import and run the RDD analysis
-    exec(open('rdd_analysis.py').read())
+    # Run the RDD analysis script
+    subprocess.run([sys.executable, 'rdd_analysis.py'])
 
 if __name__ == "__main__":
     # Parse command line arguments
