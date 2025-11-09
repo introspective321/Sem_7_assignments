@@ -1,0 +1,539 @@
+\documentclass[a4paper,12pt,headsepline]{scrartcl}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{fancyhdr}
+\usepackage{times}
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage{listings}
+\usepackage{tikz}
+\usepackage{array}
+\usepackage{float}
+
+\definecolor{IITJBlue}{RGB}{0, 51, 102}      
+\definecolor{TextGray}{RGB}{45, 45, 45}     
+\definecolor{HyperlinkBlue}{RGB}{0, 80, 155} 
+\definecolor{CodeBackground}{RGB}{245, 245, 245}
+\definecolor{CodeGray}{RGB}{128, 128, 128}
+
+\hypersetup{
+    colorlinks=true, linkcolor=HyperlinkBlue, filecolor=HyperlinkBlue,      
+    urlcolor=HyperlinkBlue, citecolor=HyperlinkBlue
+}
+
+\geometry{margin=1in}
+\color{TextGray}
+\setkomafont{section}{\large\bfseries\color{IITJBlue}}
+\setkomafont{subsection}{\bfseries\color{IITJBlue}}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{CodeBackground},   
+    commentstyle=\color{CodeGray}\itshape,
+    keywordstyle=\color{IITJBlue},
+    numberstyle=\tiny\color{CodeGray},
+    stringstyle=\color{HyperlinkBlue},
+    basicstyle=\footnotesize\ttfamily,
+    breakatwhitespace=false, breaklines=true, captionpos=b, keepspaces=true,                 
+    numbers=left, numbersep=5pt, showspaces=false, showstringspaces=false,
+    showtabs=false, tabsize=2
+}
+\lstset{style=mystyle}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textcolor{IITJBlue}{\small Machine Learning in Economics}}
+\fancyhead[R]{\textcolor{IITJBlue}{\small Anushk Gupta, AIL 7310}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    \vspace*{2cm}
+    
+    {\huge\color{IITJBlue} Machine Learning in Economics}
+    
+    \vspace{0.5cm}
+    
+    {\Large\itshape Assignment 04}
+    
+    \vfill
+    
+    {\large\bfseries Anushk Gupta} \\
+    {\mdseries AIL 7310}
+    
+    \vspace{0.8cm}
+    
+    {\large \today}
+    
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\section{Abstract}
+This report presents a comprehensive analysis of causal inference methods for estimating treatment effects in high-dimensional settings. We implement two complementary approaches: Double-LASSO (Debiased Machine Learning) for rigorous estimation of the Average Treatment Effect, and Causal Forest for analyzing heterogeneous treatment effects across subgroups. Using a simulated health program dataset with 1,000 observations and 91 pre-treatment covariates, we find a statistically significant positive treatment effect. The Double-LASSO estimates an ATE of 1.13 (SE = 0.14, p < 0.001), while the Causal Forest estimates an ATE of 0.95 (SE = 0.02). Furthermore, the Causal Forest reveals substantial heterogeneity in treatment effects across regions and income levels, with middle-income households and the Central region benefiting most from the program.
+
+\section{Introduction}
+Causal inference in high-dimensional settings poses unique challenges. When the number of potential confounders is large relative to the sample size, traditional regression methods may suffer from overfitting and produce biased estimates. This assignment explores two modern machine learning approaches to address these challenges:
+
+\begin{enumerate}
+    \item \textbf{Double-LASSO (DML)}: Implements the Debiased Machine Learning framework with LASSO regularization and cross-fitting to estimate the Average Treatment Effect while controlling for high-dimensional confounders.
+    \item \textbf{Causal Forest}: Uses ensemble learning (Random Forests) to estimate not only the average treatment effect but also heterogeneous treatment effects across individual characteristics.
+\end{enumerate}
+
+The research question is: \textit{What is the causal effect of a health program on health outcomes, and does this effect vary across different population subgroups?}
+
+\section{Data Description}
+
+The \texttt{sim\_health.csv} dataset contains simulated data on 1,000 individuals participating in a health program evaluation study.
+
+\subsection{Key Variables}
+
+\begin{itemize}
+    \item \textbf{Y} (Outcome): Continuous health outcome score (mean = 0.42, SD = 2.21, range = [-7.55, 6.91])
+    \item \textbf{D} (Treatment): Binary health program participation (513 treated, 487 control)
+    \item \textbf{Covariates}: 91 pre-treatment variables across multiple domains
+\end{itemize}
+
+\subsection{Covariate Categories}
+
+The dataset includes comprehensive pre-treatment information:
+
+\paragraph{Demographics (10 variables):} age, gender, education years, household income, employment score, marital status, household size, urban/rural, region, distance to clinic
+
+\paragraph{Clinical Measures (18 variables):} BMI, systolic/diastolic blood pressure, cholesterol, glucose, creatinine, HDL, LDL, triglycerides, waist circumference, heart rate, respiratory rate, oxygen saturation, hemoglobin, WBC, platelets, vitamin D, ALT, AST, C-reactive protein
+
+\paragraph{Behavioral Factors (12 variables):} smoking status, alcohol frequency, physical activity, diet score, sleep hours, stress score, medication adherence, health-seeking behavior, secondhand smoke exposure, tobacco years, chronic conditions count
+
+\paragraph{Healthcare Utilization (15 variables):} prior visits, hospital admissions, ER visits, preventive visits, immunization score, screening score, follow-up compliance, telemedicine use, primary care attachment, referral count, number of chronic medications, use of various medication classes
+
+\paragraph{Environmental (10 variables):} air pollution, noise exposure, green space, walkability, crime index, temperature, flood risk, cooking fuel, sanitation, population density
+
+\paragraph{Longitudinal Labs (10 variables):} Time 1 and Time 2 measurements of glucose, blood pressure, BMI, cholesterol, creatinine
+
+\paragraph{Other (1 variable):} baseline health score
+
+This high-dimensional setting (96 variables after encoding categorical variables) relative to the sample size (1,000 observations) makes it an ideal case for machine learning-based causal inference methods.
+
+\section{Methodology}
+
+\subsection{Double-LASSO (Debiased Machine Learning)}
+
+The Double-LASSO approach, also known as Debiased Machine Learning (DML), addresses the challenge of estimating causal effects in high-dimensional settings while maintaining valid statistical inference.
+
+\subsubsection{The High-Dimensional Problem}
+
+With 96 covariates and 1,000 observations, traditional OLS regression would include nearly 10\% as many parameters as observations, leading to:
+\begin{itemize}
+    \item Overfitting and poor out-of-sample prediction
+    \item Biased coefficient estimates
+    \item Invalid confidence intervals and p-values
+\end{itemize}
+
+\subsubsection{Double-LASSO Algorithm}
+
+The DML framework uses the following procedure:
+
+\paragraph{Step 1: Cross-Fitting}
+Divide the data into $K=5$ folds. For each fold $k$:
+
+\paragraph{Step 2: First-Stage LASSO (Outcome)}
+Using data from all folds except $k$, fit LASSO regression:
+\begin{equation}
+\hat{m}(X) = \arg\min_m \sum_{i \in \text{train}} (Y_i - m(X_i))^2 + \lambda_Y \|m\|_1
+\end{equation}
+where $\lambda_Y$ is chosen via cross-validation. Predict $\hat{Y}_i$ for observations in fold $k$ and compute residuals $\tilde{Y}_i = Y_i - \hat{Y}_i$.
+
+\paragraph{Step 3: First-Stage LASSO (Treatment)}
+Similarly, fit LASSO regression for treatment:
+\begin{equation}
+\hat{g}(X) = \arg\min_g \sum_{i \in \text{train}} (D_i - g(X_i))^2 + \lambda_D \|g\|_1
+\end{equation}
+Predict $\hat{D}_i$ for fold $k$ and compute residuals $\tilde{D}_i = D_i - \hat{D}_i$.
+
+\paragraph{Step 4: Second-Stage Estimation}
+After completing cross-fitting for all folds, estimate the ATE:
+\begin{equation}
+\hat{\theta} = \frac{\sum_{i=1}^n \tilde{Y}_i \tilde{D}_i}{\sum_{i=1}^n \tilde{D}_i^2}
+\end{equation}
+
+\paragraph{Step 5: Standard Error}
+The variance is estimated as:
+\begin{equation}
+\widehat{\text{Var}}(\hat{\theta}) = \frac{1}{n} \cdot \frac{\sum_{i=1}^n (\tilde{Y}_i - \hat{\theta}\tilde{D}_i)^2}{\left(\frac{1}{n}\sum_{i=1}^n \tilde{D}_i^2\right)^2}
+\end{equation}
+
+\subsubsection{Key Properties}
+
+\begin{itemize}
+    \item \textbf{Debiasing}: By residualizing both Y and D, we remove the confounding effect of X
+    \item \textbf{Cross-fitting}: Prevents overfitting bias from using the same data for model selection and estimation
+    \item \textbf{Valid inference}: Under regularity conditions, $\sqrt{n}(\hat{\theta} - \theta) \xrightarrow{d} N(0, \sigma^2)$
+\end{itemize}
+
+\subsection{Causal Forest}
+
+Causal Forest extends Random Forests to estimate heterogeneous treatment effects. We implement the T-learner approach:
+
+\subsubsection{T-Learner Algorithm}
+
+\paragraph{Step 1: Separate Models}
+Fit two Random Forest models:
+\begin{align}
+\hat{\mu}_0(X) &= \text{RandomForest}(Y \mid X, \text{where } D=0) \\
+\hat{\mu}_1(X) &= \text{RandomForest}(Y \mid X, \text{where } D=1)
+\end{align}
+
+\paragraph{Step 2: CATE Estimation}
+For each individual $i$, the Conditional Average Treatment Effect is:
+\begin{equation}
+\widehat{\text{CATE}}(X_i) = \hat{\mu}_1(X_i) - \hat{\mu}_0(X_i)
+\end{equation}
+
+\paragraph{Step 3: ATE Estimation}
+The Average Treatment Effect is the mean CATE:
+\begin{equation}
+\widehat{\text{ATE}} = \frac{1}{n}\sum_{i=1}^n \widehat{\text{CATE}}(X_i)
+\end{equation}
+
+\subsubsection{Hyperparameters}
+
+We use the following Random Forest configuration:
+\begin{itemize}
+    \item Number of trees: 200
+    \item Maximum depth: 10
+    \item Minimum samples per leaf: 20
+    \item These choices balance model flexibility and overfitting prevention
+\end{itemize}
+
+\section{Results}
+
+\subsection{Double-LASSO Analysis}
+
+The Double-LASSO (DML) analysis produced the following results:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lc}
+\toprule
+\textbf{Statistic} & \textbf{Value} \\
+\midrule
+Average Treatment Effect (ATE) & 1.1268 \\
+Standard Error & 0.1378 \\
+t-statistic & 8.1739 \\
+95\% Confidence Interval & [0.8566, 1.3970] \\
+p-value & < 0.001 \\
+\midrule
+Number of observations & 1,000 \\
+Number of treated & 513 \\
+Number of control & 487 \\
+Number of covariates & 96 \\
+\bottomrule
+\end{tabular}
+\caption{Double-LASSO estimation results. The treatment effect is highly significant with |t| = 8.17 > 1.96.}
+\label{tab:dlasso_results}
+\end{table}
+
+\textbf{Interpretation:} The health program participation has a statistically significant positive effect of approximately 1.13 units on health outcomes (p < 0.001). This estimate is robust to controlling for all 96 pre-treatment covariates through the Double-LASSO procedure. The confidence interval [0.86, 1.40] indicates we can be 95\% confident the true effect lies within this range, and notably excludes zero.
+
+\subsection{Causal Forest Analysis}
+
+\subsubsection{Average Treatment Effect}
+
+The Causal Forest estimation yielded:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lc}
+\toprule
+\textbf{Statistic} & \textbf{Value} \\
+\midrule
+Average Treatment Effect (ATE) & 0.9473 \\
+Standard Error & 0.0222 \\
+95\% Confidence Interval & [0.9038, 0.9907] \\
+\midrule
+CATE Mean & 0.9473 \\
+CATE Standard Deviation & 0.7013 \\
+CATE Minimum & -1.0120 \\
+CATE Maximum & 2.6667 \\
+\bottomrule
+\end{tabular}
+\caption{Causal Forest estimation results showing both average and heterogeneous treatment effects.}
+\label{tab:cf_ate}
+\end{table}
+
+\textbf{Comparison with Double-LASSO:} The Causal Forest ATE (0.95) is slightly lower than the Double-LASSO estimate (1.13), though both confidence intervals overlap. This difference may reflect:
+\begin{itemize}
+    \item Different modeling assumptions (linear DML vs. non-parametric forests)
+    \item Causal Forest's flexibility in capturing non-linearities
+    \item Sampling variability and regularization differences
+\end{itemize}
+
+Both methods agree on a positive, significant treatment effect, providing robust evidence for program effectiveness.
+
+\subsubsection{Treatment Effect Heterogeneity by Region}
+
+Figure \ref{fig:cate_region} shows substantial variation in treatment effects across geographic regions.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{cate_by_region.png}
+    \caption{Conditional Average Treatment Effect (CATE) by region. Error bars represent standard deviations. The Central region shows the highest treatment effect (1.00), while the South region shows the lowest (0.86). All regions exhibit positive effects.}
+    \label{fig:cate_region}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Region} & \textbf{Mean CATE} & \textbf{Std Dev} & \textbf{N} \\
+\midrule
+Central & 1.0029 & 0.6762 & 200 \\
+East    & 0.9719 & 0.7175 & 200 \\
+North   & 0.9773 & 0.7029 & 200 \\
+South   & 0.8607 & 0.7174 & 200 \\
+West    & 0.9236 & 0.6915 & 200 \\
+\bottomrule
+\end{tabular}
+\caption{Treatment effect heterogeneity by region. Range = 0.14 units (from 0.86 to 1.00).}
+\label{tab:cate_region}
+\end{table}
+
+\textbf{Key Findings:}
+\begin{itemize}
+    \item All regions show positive treatment effects
+    \item Central region benefits most (CATE = 1.00)
+    \item South region benefits least (CATE = 0.86)
+    \item Regional variation represents about 15\% of the average effect
+    \item Standard deviations are similar across regions (0.68-0.72)
+\end{itemize}
+
+\subsubsection{Treatment Effect Heterogeneity by Household Income}
+
+Figure \ref{fig:cate_income} illustrates the relationship between household income and treatment effects.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{cate_by_income.png}
+    \caption{CATE by household income. Left panel: Treatment effects by income quartile with error bars. Right panel: Continuous relationship showing binned average CATE (green line) with individual observations (gray points). Middle-income households (Q3) show the highest treatment effect.}
+    \label{fig:cate_income}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Income Quartile} & \textbf{Mean CATE} & \textbf{Std Dev} & \textbf{N} \\
+\midrule
+Q1 (Low)    & 0.8737 & 0.7337 & 250 \\
+Q2          & 0.9278 & 0.7135 & 250 \\
+Q3          & 1.0254 & 0.6775 & 250 \\
+Q4 (High)   & 0.9622 & 0.6758 & 250 \\
+\bottomrule
+\end{tabular}
+\caption{Treatment effect heterogeneity by household income quartile. Range = 0.15 units.}
+\label{tab:cate_income}
+\end{table}
+
+\textbf{Key Findings:}
+\begin{itemize}
+    \item Treatment effect is \textbf{not monotonic} in income
+    \item Middle-income households (Q3) benefit most (CATE = 1.03)
+    \item Low-income households (Q1) benefit least (CATE = 0.87)
+    \item High-income households (Q4) show intermediate effects (CATE = 0.96)
+    \item The inverted-U pattern suggests the program may be optimally designed for middle-income populations
+\end{itemize}
+
+\textbf{Possible Explanations:}
+\begin{enumerate}
+    \item \textbf{Low-income (Q1)}: May face barriers to program compliance (transportation, time constraints)
+    \item \textbf{Middle-income (Q3)}: Have resources to utilize program effectively without already having access to alternatives
+    \item \textbf{High-income (Q4)}: May have access to substitute health services, reducing marginal program benefit
+\end{enumerate}
+
+\section{Discussion}
+
+\subsection{Methodological Comparison}
+
+Table \ref{tab:method_comparison} compares the two approaches:
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{p{3cm}p{5.5cm}p{5.5cm}}
+\toprule
+\textbf{Aspect} & \textbf{Double-LASSO} & \textbf{Causal Forest} \\
+\midrule
+Estimand & Average Treatment Effect & ATE + CATE \\
+Statistical Theory & Formal asymptotic theory & Less formal (bootstrap) \\
+Assumptions & Linearity, sparsity & Non-parametric \\
+Inference & Valid CIs and p-values & Approximate CIs \\
+Heterogeneity & No & Yes \\
+Computation & Fast & Moderate \\
+Interpretability & Single coefficient & Complex \\
+\midrule
+\textbf{ATE Estimate} & 1.13 (0.14) & 0.95 (0.02) \\
+\textbf{95\% CI} & [0.86, 1.40] & [0.90, 0.99] \\
+\bottomrule
+\end{tabular}
+\caption{Methodological comparison of Double-LASSO and Causal Forest approaches.}
+\label{tab:method_comparison}
+\end{table}
+
+\subsection{Policy Implications}
+
+\subsubsection{Overall Program Effectiveness}
+
+Both methods provide strong evidence that the health program is effective:
+\begin{itemize}
+    \item Estimated ATE ranges from 0.95 to 1.13 units
+    \item Highly statistically significant (p < 0.001)
+    \item Robust across different modeling approaches
+\end{itemize}
+
+\textbf{Recommendation:} Continue and expand the health program.
+
+\subsubsection{Targeted Interventions}
+
+The Causal Forest analysis reveals opportunities for targeted interventions:
+
+\paragraph{Geographic Targeting:}
+\begin{itemize}
+    \item \textbf{South region} shows 16\% lower effects than Central region
+    \item \textbf{Action:} Investigate barriers in South (e.g., clinic access, cultural factors) and adapt program design
+\end{itemize}
+
+\paragraph{Income-Based Targeting:}
+\begin{itemize}
+    \item \textbf{Low-income (Q1)} shows 17\% lower effects than middle-income (Q3)
+    \item \textbf{Action:} Provide additional support to low-income participants (e.g., transportation vouchers, childcare, flexible scheduling)
+    \item \textbf{Middle-income (Q3)} shows highest effects
+    \item \textbf{Action:} Study what makes the program work well for this group and apply lessons elsewhere
+\end{itemize}
+
+\subsection{Limitations}
+
+\paragraph{Data Limitations:}
+\begin{itemize}
+    \item Simulated data may not capture real-world complexity
+    \item Cross-sectional design; longitudinal data would strengthen causal inference
+    \item Potential unmeasured confounders not in the dataset
+\end{itemize}
+
+\paragraph{Methodological Limitations:}
+\begin{itemize}
+    \item LASSO assumes sparsity (only some covariates matter); may not hold
+    \item Causal Forest requires large samples for stable CATE estimates
+    \item Both methods assume unconfoundedness (no unmeasured confounders)
+\end{itemize}
+
+\paragraph{External Validity:}
+\begin{itemize}
+    \item Results specific to this population and program design
+    \item Generalization to other settings requires careful consideration
+\end{itemize}
+
+\section{Conclusion}
+
+This analysis demonstrates the application of two modern machine learning methods for causal inference in high-dimensional settings. Our main findings are:
+
+\begin{enumerate}
+    \item \textbf{Positive Average Treatment Effect}: The health program increases health outcomes by approximately 0.95--1.13 units, with strong statistical significance (p < 0.001).
+    
+    \item \textbf{Methodological Agreement}: Despite different modeling assumptions, Double-LASSO and Causal Forest produce consistent ATE estimates, strengthening confidence in the results.
+    
+    \item \textbf{Substantial Heterogeneity}: Treatment effects vary meaningfully across regions (range: 0.86--1.00) and income levels (range: 0.87--1.03).
+    
+    \item \textbf{Policy-Relevant Insights}: Middle-income households and Central region benefit most; low-income households and South region show lower effects, suggesting opportunities for targeted improvements.
+\end{enumerate}
+
+\textbf{Contribution to Causal Inference:} This work illustrates how combining multiple machine learning methods can provide both rigorous effect estimates (Double-LASSO) and actionable heterogeneity insights (Causal Forest). The complementary strengths of these approaches make them valuable tools for evidence-based policy evaluation.
+
+\textbf{Future Research:} 
+\begin{itemize}
+    \item Validate findings with real-world data
+    \item Investigate mechanisms explaining heterogeneity (why does Q3 benefit most?)
+    \item Test modified interventions for low-performing subgroups
+    \item Extend to dynamic treatment regimes
+\end{itemize}
+
+\section{Code and Reproducibility}
+
+All analyses were implemented in Python 3.12 using:
+\begin{itemize}
+    \item \texttt{pandas}, \texttt{numpy}: Data manipulation
+    \item \texttt{scikit-learn}: Machine learning models (LASSO, Random Forest)
+    \item \texttt{matplotlib}, \texttt{seaborn}: Visualization
+    \item \texttt{statsmodels}, \texttt{scipy}: Statistical inference
+\end{itemize}
+
+The complete code and datasets are available at: \\
+\href{https://github.com/introspective321/Sem_7_assignments}{\color{HyperlinkBlue}GitHub Repository: introspective321/Sem\_7\_assignments}
+
+\subsection{Repository Structure}
+
+\begin{lstlisting}[language=bash]
+mleco_a4/
+|-- sim_health.csv                 # Dataset
+|-- double_lasso_analysis.py       # Double-LASSO implementation
+|-- causal_forest_analysis.py      # Causal Forest implementation
+|-- main.py                        # Main script
+|-- requirements.txt               # Dependencies
+|-- README.md                      # Results summary
+|-- report.tex                     # This report
+|-- cate_by_region.png             # Figure: CATE by region
+|-- cate_by_income.png             # Figure: CATE by income
+\end{lstlisting}
+
+\subsection{Reproduction Instructions}
+
+To reproduce the analysis:
+
+\begin{lstlisting}[language=bash]
+# Clone repository
+git clone https://github.com/introspective321/Sem_7_assignments.git
+cd Sem_7_assignments/mleco_a4
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run complete analysis
+python main.py
+
+# Or run individual analyses
+python double_lasso_analysis.py
+python causal_forest_analysis.py
+\end{lstlisting}
+
+\subsection{Runtime}
+
+On a standard laptop (8GB RAM, 4 cores):
+\begin{itemize}
+    \item Double-LASSO: $\sim$30 seconds
+    \item Causal Forest: $\sim$60 seconds
+    \item Total: $\sim$90 seconds
+\end{itemize}
+
+\section{References}
+
+\begin{enumerate}
+    \item Chernozhukov, V., Chetverikov, D., Demirer, M., Duflo, E., Hansen, C., Newey, W., \& Robins, J. (2018). Double/debiased machine learning for treatment and structural parameters. \textit{The Econometrics Journal}, 21(1), C1-C68.
+    
+    \item Athey, S., \& Imbens, G. W. (2016). Recursive partitioning for heterogeneous causal effects. \textit{Proceedings of the National Academy of Sciences}, 113(27), 7353-7360.
+    
+    \item Wager, S., \& Athey, S. (2018). Estimation and inference of heterogeneous treatment effects using random forests. \textit{Journal of the American Statistical Association}, 113(523), 1228-1242.
+    
+    \item Künzel, S. R., Sekhon, J. S., Bickel, P. J., \& Yu, B. (2019). Metalearners for estimating heterogeneous treatment effects using machine learning. \textit{Proceedings of the National Academy of Sciences}, 116(10), 4156-4165.
+    
+    \item Belloni, A., Chernozhukov, V., \& Hansen, C. (2014). Inference on treatment effects after selection among high-dimensional controls. \textit{The Review of Economic Studies}, 81(2), 608-650.
+    
+    \item Tibshirani, R. (1996). Regression shrinkage and selection via the lasso. \textit{Journal of the Royal Statistical Society: Series B}, 58(1), 267-288.
+\end{enumerate}
+
+\end{document}
